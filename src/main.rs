@@ -17,7 +17,7 @@ fn window_conf() -> Conf {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Cell {
     Empty,
     Head,
@@ -44,6 +44,24 @@ async fn main() {
         }
         // uploads the new board state to the texture
         board_texture.update(&board_image);
+
+        // update mouse position
+        let (m_x, m_y) = mouse_position();
+
+        // handle user input and check to make sure the 
+        // mouse isnt on the edge, which can cause issues
+        if (m_x >= 0.0 && m_y >= 0.0) && (m_x < WIDTH as f32 && m_y < HEIGHT as f32) {
+            if is_mouse_button_down(MouseButton::Left) {
+                let (board_x, board_y) = screen_to_board(m_x, m_y);
+                board[board_y][board_x] = Cell::Conductor;
+            } else if is_mouse_button_down(MouseButton::Right) {
+                let (board_x, board_y) = screen_to_board(m_x, m_y);
+                board[board_y][board_x] = Cell::Empty;
+            } else if is_mouse_button_down(MouseButton::Middle) {
+                let (board_x, board_y) = screen_to_board(m_x, m_y);
+                board[board_y][board_x] = Cell::Head;
+            }
+        }
         
         draw_texture_ex(
             board_texture,
@@ -60,6 +78,8 @@ async fn main() {
     }
 }
 
+/// takes a cell and return the color
+/// that visually represents it
 fn get_cell_color(cell: &Cell) -> Color {
     match cell {
         Cell::Empty => BLACK,
@@ -67,4 +87,16 @@ fn get_cell_color(cell: &Cell) -> Color {
         Cell::Tail => RED,
         Cell::Conductor => YELLOW,
     }
+}
+
+/// takes an x and y in screen space
+/// and converts it to board space
+fn screen_to_board(x: f32, y: f32) -> (usize, usize) {
+    let scaled_x = x / WIDTH as f32;
+    let scaled_y = y / HEIGHT as f32;
+
+    let board_x = (scaled_x * BOARD_WIDTH as f32) as usize;
+    let board_y = (scaled_y * BOARD_HEIGHT as f32) as usize;
+
+    (board_x, board_y)
 }
