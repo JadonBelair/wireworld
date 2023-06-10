@@ -1,10 +1,21 @@
+use std::time::Instant;
 use macroquad::prelude::*;
 
+/// screen width
 const WIDTH: i32 = 800;
+/// screen height
 const HEIGHT: i32 = 800;
 
+/// board width
 const BOARD_WIDTH: usize = 50;
+/// board height
 const BOARD_HEIGHT: usize = 50;
+
+/// FPS for the simulation
+const FPS: f32 = 2.0;
+/// target time in seconds 
+/// between each simulation frame
+const FPS_TIME: f32 = 1.0 / FPS;
 
 fn window_conf() -> Conf {
     Conf {
@@ -33,6 +44,7 @@ async fn main() {
     let board_texture = Texture2D::from_image(&board_image);
     board_texture.set_filter(FilterMode::Nearest);
 
+    let mut elapsed = Instant::now();
     loop {
         clear_background(BLACK);
 
@@ -62,7 +74,13 @@ async fn main() {
                 board[board_y][board_x] = Cell::Head;
             }
         }
-        
+
+        // only updates the board 2 times per second
+        if elapsed.elapsed().as_secs_f32() >= FPS_TIME {
+            board = next_generation(&board);
+            elapsed = Instant::now();
+        }
+
         draw_texture_ex(
             board_texture,
             0.0,
@@ -78,7 +96,7 @@ async fn main() {
     }
 }
 
-/// takes a cell and return the color
+/// takes a cell and returns the color
 /// that visually represents it
 fn get_cell_color(cell: &Cell) -> Color {
     match cell {
@@ -99,4 +117,50 @@ fn screen_to_board(x: f32, y: f32) -> (usize, usize) {
     let board_y = (scaled_y * BOARD_HEIGHT as f32) as usize;
 
     (board_x, board_y)
+}
+
+/// returns the next generation of any given board state
+fn next_generation(board: &[[Cell; BOARD_WIDTH]; BOARD_HEIGHT]) -> [[Cell; BOARD_WIDTH]; BOARD_HEIGHT] {
+    let mut next_board = [[Cell::Empty; BOARD_WIDTH]; BOARD_HEIGHT];
+
+    for y in 0..board.len() {
+        for x in 0..board[0].len() {
+            next_board[y][x] = next_state(board, x, y);
+        }
+    }
+
+    next_board
+}
+
+/// returns the next state of a cell in any given position
+fn next_state(board: &[[Cell; BOARD_WIDTH]; BOARD_HEIGHT], x: usize, y: usize) -> Cell {
+    let cell = board[y][x];
+
+    match cell {
+        Cell::Empty => Cell::Empty,
+        Cell::Head => Cell::Tail,
+        Cell::Tail => Cell::Conductor,
+        Cell::Conductor => {
+
+            let mut neighbour_head = 0;
+
+            // loops through the 8 surrounding cells to see how many are head cells.
+            // has checks in place for edge cells to avoid leaving the bounds.
+            for c_y in (if y == 0 {0} else {y - 1})..=(if y > BOARD_HEIGHT - 2 {BOARD_HEIGHT - 1} else {y + 1}) {
+                for c_x in (if x == 0 {0} else {x - 1})..=(if x > BOARD_WIDTH - 2 {BOARD_WIDTH - 1} else {x + 1}) {
+                    if board[c_y][c_x] == Cell::Head {
+                        neighbour_head += 1;
+                    }
+                }
+            }
+
+            // will only become a head cell if there
+            // are 1 or 2 surrounding head cells
+            if neighbour_head == 1 || neighbour_head == 2 {
+                Cell::Head
+            } else {
+                Cell::Conductor
+            }
+        }
+    }
 }
