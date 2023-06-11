@@ -1,10 +1,5 @@
 use macroquad::prelude::*;
 
-/// screen width
-const WIDTH: i32 = 800;
-/// screen height
-const HEIGHT: i32 = 800;
-
 /// board width
 const BOARD_WIDTH: usize = 200;
 /// board height
@@ -19,9 +14,9 @@ const FPS_TIME: f32 = 1.0 / FPS;
 fn window_conf() -> Conf {
     Conf {
         window_title: "Wireworld".to_owned(),
-        window_width: WIDTH,
-        window_height: HEIGHT,
-        window_resizable: false,
+        window_width: 800,
+        window_height: 800,
+        window_resizable: true,
         fullscreen: false,
         ..Default::default()
     }
@@ -43,11 +38,15 @@ async fn main() {
     let board_texture = Texture2D::from_image(&board_image);
     board_texture.set_filter(FilterMode::Nearest);
 
+    // width and height of the screen
+    let mut width = screen_width();
+    let mut height = screen_height();
+
     // scales the screen to the smaller dimension
-    let mut scale = if WIDTH < HEIGHT {
-        WIDTH as f32 / BOARD_WIDTH as f32
+    let mut scale = if width < height {
+        width as f32 / BOARD_WIDTH as f32
     } else {
-        HEIGHT as f32 / BOARD_HEIGHT as f32
+        height as f32 / BOARD_HEIGHT as f32
     };
 
     let mut offset_x = 0.0;
@@ -60,6 +59,9 @@ async fn main() {
 
     loop {
         clear_background(BLACK);
+        
+        width = screen_width();
+        height = screen_height();
 
         // sets the current board state into the board image
         for (y, row) in board.iter().enumerate() {
@@ -75,7 +77,7 @@ async fn main() {
 
         // handle user input and check to make sure the 
         // mouse isnt on the edge, which can cause issues
-        if (m_x >= 0.0 && m_y >= 0.0) && (m_x < WIDTH as f32 && m_y < HEIGHT as f32) {
+        if (m_x >= 0.0 && m_y >= 0.0) && (m_x < width as f32 && m_y < height as f32) {
             let (board_x, board_y) = screen_to_board(m_x, m_y, scale, offset_x, offset_y);
             if board_x < BOARD_WIDTH && board_y < BOARD_HEIGHT {
                 if is_mouse_button_down(MouseButton::Left) {
@@ -136,10 +138,10 @@ async fn main() {
             
             // only draw lines that are on screen
             if x < 0.0 { continue; }
-            if x >= WIDTH as f32 { break; }
+            if x >= width as f32 { break; }
 
             let top_y = (-offset_y * scale).max(0.0);
-            let bottom_y = ((BOARD_HEIGHT as f32 - offset_y) * scale).min(HEIGHT as f32);
+            let bottom_y = ((BOARD_HEIGHT as f32 - offset_y) * scale).min(height as f32);
             draw_line(x, top_y, x, bottom_y, 0.5, GRAY);
         }
         
@@ -148,10 +150,10 @@ async fn main() {
             
             // only draw lines that are on screen
             if y < 0.0 { continue; }
-            if y >= HEIGHT as f32 { break; }
+            if y >= height as f32 { break; }
 
             let left_x = (-offset_x * scale).max(0.0);
-            let right_x = ((BOARD_WIDTH as f32 - offset_x) * scale).min(WIDTH as f32);
+            let right_x = ((BOARD_WIDTH as f32 - offset_x) * scale).min(width as f32);
             draw_line(left_x.round(), y.round(), right_x.round(), y.round(), 0.5, GRAY);
         }
 
