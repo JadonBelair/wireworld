@@ -7,9 +7,9 @@ const WIDTH: i32 = 800;
 const HEIGHT: i32 = 800;
 
 /// board width
-const BOARD_WIDTH: usize = 50;
+const BOARD_WIDTH: usize = 200;
 /// board height
-const BOARD_HEIGHT: usize = 50;
+const BOARD_HEIGHT: usize = 200;
 
 /// FPS for the simulation
 const FPS: f32 = 2.0;
@@ -44,11 +44,22 @@ async fn main() {
     let board_texture = Texture2D::from_image(&board_image);
     board_texture.set_filter(FilterMode::Nearest);
 
+    // scales the screen to the smaller dimension
+    let mut scale = if WIDTH < HEIGHT {
+        WIDTH as f32 / BOARD_WIDTH as f32
+    } else {
+        HEIGHT as f32 / BOARD_HEIGHT as f32
+    };
+
+    let mut offset_x = 0.0;
+    let mut offset_y = 0.0;
+    
+    // keeps track of time passed since last simulation
     let mut elapsed = Instant::now();
     loop {
         clear_background(BLACK);
 
-        // sets the new board state into the board image
+        // sets the current board state into the board image
         for (y, row) in board.iter().enumerate() {
             for (x, cell) in row.iter().enumerate() {
                 board_image.set_pixel(x as u32, y as u32, get_cell_color(cell));
@@ -63,31 +74,50 @@ async fn main() {
         // handle user input and check to make sure the 
         // mouse isnt on the edge, which can cause issues
         if (m_x >= 0.0 && m_y >= 0.0) && (m_x < WIDTH as f32 && m_y < HEIGHT as f32) {
-            if is_mouse_button_down(MouseButton::Left) {
-                let (board_x, board_y) = screen_to_board(m_x, m_y);
-                board[board_y][board_x] = Cell::Conductor;
-            } else if is_mouse_button_down(MouseButton::Right) {
-                let (board_x, board_y) = screen_to_board(m_x, m_y);
-                board[board_y][board_x] = Cell::Empty;
-            } else if is_mouse_button_down(MouseButton::Middle) {
-                let (board_x, board_y) = screen_to_board(m_x, m_y);
-                board[board_y][board_x] = Cell::Head;
+            let (board_x, board_y) = screen_to_board(m_x, m_y, scale, offset_x, offset_y);
+            if board_x < BOARD_WIDTH && board_y < BOARD_HEIGHT {
+                if is_mouse_button_down(MouseButton::Left) {
+                    board[board_y][board_x] = Cell::Conductor;
+                } else if is_mouse_button_down(MouseButton::Right) {
+                    board[board_y][board_x] = Cell::Empty;
+                } else if is_mouse_button_down(MouseButton::Middle) {
+                    board[board_y][board_x] = Cell::Head;
+                }
             }
         }
 
-        // only updates the board 2 times per second
+        // only updates the board the request amount per second
         if elapsed.elapsed().as_secs_f32() >= FPS_TIME {
             board = next_generation(&board);
             elapsed = Instant::now();
         }
 
+        // handles pan and zoom operations
+
+        if is_key_down(KeyCode::A) {
+            offset_x -= 1.0;
+        } else if is_key_down(KeyCode::D) {
+            offset_x += 1.0;
+        }
+        if is_key_down(KeyCode::W) {
+            offset_y -= 1.0;
+        } else if is_key_down(KeyCode::S) {
+            offset_y += 1.0;
+        }
+        
+        if is_key_down(KeyCode::Q) {
+            scale *= 0.99;
+        } else if is_key_down(KeyCode::E) {
+            scale *= 1.01;
+        }
+
         draw_texture_ex(
             board_texture,
-            0.0,
-            0.0,
+            -offset_x * scale,
+            -offset_y * scale,
             WHITE,
             DrawTextureParams {
-                dest_size: Some(vec2(WIDTH as f32, HEIGHT as f32)),
+                dest_size: Some(vec2(BOARD_WIDTH as f32 * scale, BOARD_HEIGHT as f32 * scale)),
                 ..Default::default()
             }
         );
@@ -109,14 +139,15 @@ fn get_cell_color(cell: &Cell) -> Color {
 
 /// takes an x and y in screen space
 /// and converts it to board space
-fn screen_to_board(x: f32, y: f32) -> (usize, usize) {
-    let scaled_x = x / WIDTH as f32;
-    let scaled_y = y / HEIGHT as f32;
+fn screen_to_board(x: f32, y: f32, scale: f32, x_off: f32, y_off: f32) -> (usize, usize) {
+    let scaled_x = x / scale + x_off;
+    let scaled_y = y / scale + y_off;
 
-    let board_x = (scaled_x * BOARD_WIDTH as f32) as usize;
-    let board_y = (scaled_y * BOARD_HEIGHT as f32) as usize;
+    if scaled_x < 0.0 || scaled_y < 0.0 {
+        return (BOARD_WIDTH, BOARD_HEIGHT);
+    }
 
-    (board_x, board_y)
+    (scaled_x as usize, scaled_y as usize)
 }
 
 /// returns the next generation of any given board state
