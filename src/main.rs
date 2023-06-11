@@ -1,4 +1,3 @@
-use std::time::Instant;
 use macroquad::prelude::*;
 
 /// screen width
@@ -55,7 +54,10 @@ async fn main() {
     let mut offset_y = 0.0;
     
     // keeps track of time passed since last simulation
-    let mut elapsed = Instant::now();
+    let mut elapsed = 0.0;
+
+    let mut paused = false;
+
     loop {
         clear_background(BLACK);
 
@@ -86,12 +88,6 @@ async fn main() {
             }
         }
 
-        // only updates the board the request amount per second
-        if elapsed.elapsed().as_secs_f32() >= FPS_TIME {
-            board = next_generation(&board);
-            elapsed = Instant::now();
-        }
-
         // handles pan and zoom operations
 
         if is_key_down(KeyCode::A) {
@@ -111,6 +107,17 @@ async fn main() {
             scale *= 1.01;
         }
 
+
+        if is_key_pressed(KeyCode::Space) {
+            paused = !paused;
+        }
+        
+        // only updates the board the request amount per second
+        if elapsed >= FPS_TIME && !paused {
+            board = next_generation(&board);
+            elapsed = 0.0;
+        }
+
         draw_texture_ex(
             board_texture,
             -offset_x * scale,
@@ -121,6 +128,8 @@ async fn main() {
                 ..Default::default()
             }
         );
+
+        elapsed += get_frame_time();
 
         next_frame().await
     }

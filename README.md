@@ -4,6 +4,7 @@ An implementation of the Wireworld cellular automaton written in rust using macr
 ## Controls
 Movement: WASD <br>
 Zoom: Q and E <br>
+Pause: Space <br>
 
 Place Conductor: Left Click <br>
 Place Head: Middle Click <br>
