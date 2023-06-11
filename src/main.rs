@@ -91,14 +91,14 @@ async fn main() {
         // handles pan and zoom operations
 
         if is_key_down(KeyCode::A) {
-            offset_x -= 1.0;
+            offset_x -= 1.0 / scale * 10.0;
         } else if is_key_down(KeyCode::D) {
-            offset_x += 1.0;
+            offset_x += 1.0 / scale * 10.0;
         }
         if is_key_down(KeyCode::W) {
-            offset_y -= 1.0;
+            offset_y -= 1.0 / scale * 10.0;
         } else if is_key_down(KeyCode::S) {
-            offset_y += 1.0;
+            offset_y += 1.0 / scale * 10.0;
         }
         
         if is_key_down(KeyCode::Q) {
@@ -128,6 +128,32 @@ async fn main() {
                 ..Default::default()
             }
         );
+
+        // pretty bad grid drawing algorithm, will fix later
+
+        for i in 0..=BOARD_WIDTH {
+            let x = ((i as f32 - offset_x) * scale).max(0.0);
+            
+            // only draw lines that are on screen
+            if x < 0.0 { continue; }
+            if x >= WIDTH as f32 { break; }
+
+            let top_y = (-offset_y * scale).max(0.0);
+            let bottom_y = ((BOARD_HEIGHT as f32 - offset_y) * scale).min(HEIGHT as f32);
+            draw_line(x, top_y, x, bottom_y, 0.5, GRAY);
+        }
+        
+        for i in 0..=BOARD_HEIGHT {
+            let y = ((i as f32 - offset_y) * scale).max(0.0);
+            
+            // only draw lines that are on screen
+            if y < 0.0 { continue; }
+            if y >= HEIGHT as f32 { break; }
+
+            let left_x = (-offset_x * scale).max(0.0);
+            let right_x = ((BOARD_WIDTH as f32 - offset_x) * scale).min(WIDTH as f32);
+            draw_line(left_x.round(), y.round(), right_x.round(), y.round(), 0.5, GRAY);
+        }
 
         elapsed += get_frame_time();
 
