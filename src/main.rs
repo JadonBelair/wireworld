@@ -44,9 +44,9 @@ async fn main() {
 
     // scales the screen to the smaller dimension
     let mut scale = if width < height {
-        width as f32 / BOARD_WIDTH as f32
+        width / BOARD_WIDTH as f32
     } else {
-        height as f32 / BOARD_HEIGHT as f32
+        height / BOARD_HEIGHT as f32
     };
 
     let mut offset_x = 0.0;
@@ -77,7 +77,7 @@ async fn main() {
 
         // handle user input and check to make sure the 
         // mouse isnt on the edge, which can cause issues
-        if (m_x >= 0.0 && m_y >= 0.0) && (m_x < width as f32 && m_y < height as f32) {
+        if (m_x >= 0.0 && m_y >= 0.0) && (m_x < width && m_y < height) {
             let (board_x, board_y) = screen_to_board(m_x, m_y, scale, offset_x, offset_y);
             if board_x < BOARD_WIDTH && board_y < BOARD_HEIGHT {
                 if is_mouse_button_down(MouseButton::Left) {
@@ -93,14 +93,14 @@ async fn main() {
         // handles pan and zoom operations
 
         if is_key_down(KeyCode::A) {
-            offset_x -= 1.0 / scale * 10.0;
+            offset_x -= 10.0 / scale;
         } else if is_key_down(KeyCode::D) {
-            offset_x += 1.0 / scale * 10.0;
+            offset_x += 10.0 / scale;
         }
         if is_key_down(KeyCode::W) {
-            offset_y -= 1.0 / scale * 10.0;
+            offset_y -= 10.0 / scale;
         } else if is_key_down(KeyCode::S) {
-            offset_y += 1.0 / scale * 10.0;
+            offset_y += 10.0 / scale;
         }
         
         if is_key_down(KeyCode::Q) {
@@ -131,29 +131,22 @@ async fn main() {
             }
         );
 
-        // pretty bad grid drawing algorithm, will fix later
+        // i think the grid algorithm is better now.
+        // is still subject to future change
 
-        for i in 0..=BOARD_WIDTH {
-            let x = ((i as f32 - offset_x) * scale).max(0.0);
-            
-            // only draw lines that are on screen
-            if x < 0.0 { continue; }
-            if x >= width as f32 { break; }
-
+        for i in (offset_x.clamp(0.0, BOARD_WIDTH as f32) as usize)..=(((width - offset_x) * scale) as usize).min(BOARD_WIDTH) {
+            let x = (i as f32 - offset_x) * scale;
             let top_y = (-offset_y * scale).max(0.0);
-            let bottom_y = ((BOARD_HEIGHT as f32 - offset_y) * scale).min(height as f32);
+            let bottom_y = ((BOARD_HEIGHT as f32 - offset_y) * scale).min(height);
+            
             draw_line(x, top_y, x, bottom_y, 0.5, GRAY);
         }
         
-        for i in 0..=BOARD_HEIGHT {
-            let y = ((i as f32 - offset_y) * scale).max(0.0);
-            
-            // only draw lines that are on screen
-            if y < 0.0 { continue; }
-            if y >= height as f32 { break; }
-
+        for i in (offset_y.clamp(0.0, BOARD_HEIGHT as f32) as usize)..=(((height - offset_y) * scale) as usize).min(BOARD_HEIGHT) {
+            let y = (i as f32 - offset_y) * scale;
             let left_x = (-offset_x * scale).max(0.0);
-            let right_x = ((BOARD_WIDTH as f32 - offset_x) * scale).min(width as f32);
+            let right_x = ((BOARD_WIDTH as f32 - offset_x) * scale).min(width);
+
             draw_line(left_x.round(), y.round(), right_x.round(), y.round(), 0.5, GRAY);
         }
 
