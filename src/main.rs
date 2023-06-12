@@ -161,35 +161,27 @@ impl Wireworld {
         if is_mouse_button_down(MouseButton::Left) {
             let (board_x, board_y) = self.screen_to_board(m_x, m_y);
             if board_x >= 0 && board_x < self.width as isize && board_y >= 0 && board_y < self.height as isize {
-                self.board[board_y as usize][board_x as usize] = Cell::Conductor;
-                self.updates.insert((board_x as usize, board_y as usize));
-                for x in ((board_x - 1).max(0) as usize)..=((board_x + 1) as usize).min(self.width - 1) {
-                    for y in ((board_y - 1).max(0) as usize)..=((board_y + 1) as usize).min(self.height - 1) {
-                        self.updates.insert((x, y));
-                    }
-                }
+                self.insert_cell(Cell::Conductor, board_x as usize, board_y as usize);
             }
         } else if is_mouse_button_down(MouseButton::Right) {
             let (board_x, board_y) = self.screen_to_board(m_x, m_y);
             if board_x >= 0 && board_x < self.width as isize && board_y >= 0 && board_y < self.height as isize {
-                self.board[board_y as usize][board_x as usize] = Cell::Empty;
-                self.updates.insert((board_x as usize, board_y as usize));
-                for x in ((board_x - 1).max(0) as usize)..=((board_x + 1) as usize).min(self.width - 1) {
-                    for y in ((board_y - 1).max(0) as usize)..=((board_y + 1) as usize).min(self.height - 1) {
-                        self.updates.insert((x, y));
-                    }
-                }
+                self.insert_cell(Cell::Empty, board_x as usize, board_y as usize);
             }
         } else if is_mouse_button_down(MouseButton::Middle) {
             let (board_x, board_y) = self.screen_to_board(m_x, m_y);
             if board_x >= 0 && board_x < self.width as isize && board_y >= 0 && board_y < self.height as isize {
-                self.board[board_y as usize][board_x as usize] = Cell::Head;
-                self.updates.insert((board_x as usize, board_y as usize));
-                for x in ((board_x - 1).max(0) as usize)..=((board_x + 1) as usize).min(self.width - 1) {
-                    for y in ((board_y - 1).max(0) as usize)..=((board_y + 1) as usize).min(self.height - 1) {
-                        self.updates.insert((x, y));
-                    }
-                }
+                self.insert_cell(Cell::Head, board_x as usize, board_y as usize);
+            }
+        }
+    }
+
+    fn insert_cell(&mut self, cell: Cell, x: usize, y: usize) {
+        self.board[y][x] = cell;
+        self.updates.insert((x, y));
+        for n_x in ((x as isize - 1).max(0) as usize)..=(x + 1).min(self.width - 1) {
+            for n_y in ((y as isize - 1).max(0) as usize)..=(y + 1).min(self.height - 1) {
+                self.updates.insert((n_x, n_y));
             }
         }
     }
@@ -213,6 +205,13 @@ impl Wireworld {
         (scaled_x as isize, scaled_y as isize)
     }
 
+    fn board_to_screen(&self, x: usize, y: usize) -> (f32, f32) {
+        let screen_x = (x as f32 - self.x_offset) * self.scale;
+        let screen_y = (y as f32 - self.y_offset) * self.scale;
+
+        (screen_x, screen_y)
+    }
+
     /// draws the board and and grid
     fn draw_board(&mut self) {
         draw_texture_ex(
@@ -226,33 +225,52 @@ impl Wireworld {
             },
         );
 
-        for i in (self.x_offset.clamp(0.0, self.width as f32) as usize)..=(((screen_width() - self.x_offset) * self.scale) as usize).min(self.width) {
-            let x = (i as f32 - self.x_offset) * self.scale;
-            let top_y = (-self.y_offset * self.scale).max(0.0);
-            let bottom_y = ((self.height as f32 - self.y_offset) * self.scale).min(screen_height());
+        // fades the grid out the farther you are zoomed out
+        let grid_weight = (self.scale - 10.0).clamp(0.0, 1.0);
+
+        // gets the top-left and bottom-right of the screen in board space
+        let tl = {
+            let (x, y) = self.screen_to_board(0.0, 0.0);
+            (x.clamp(0, self.width as isize) as usize, y.clamp(0, self.height as isize) as usize)
+        };
+
+        let br = {
+            let (x, y) = self.screen_to_board(screen_width() - 1.0, screen_height() - 1.0);
+            (x.clamp(0, self.width as isize) as usize, y.clamp(0, self.height as isize) as usize)
+        };
+
+        // clips the x and y coords of the tl and br to only 
+        // draw the grid for the cells on screen
+
+        for i in tl.0..=br.0 {
+            let top = self.board_to_screen(i, tl.1);
+            let bottom = self.board_to_screen(i, (br.1 + 1).min(self.height));
             
-            draw_line(x, top_y, x, bottom_y, 0.5, GRAY);
+            draw_line(top.0, top.1, bottom.0, bottom.1, grid_weight, GRAY);
         }
         
-        for i in (self.y_offset.clamp(0.0, self.height as f32) as usize)..=(((screen_height() - self.y_offset) * self.scale) as usize).min(self.height) {
-            let y = (i as f32 - self.y_offset) * self.scale;
-            let left_x = (-self.x_offset * self.scale).max(0.0);
-            let right_x = ((self.width as f32 - self.x_offset) * self.scale).min(screen_width());
+        for i in tl.1..=br.1 {
+            let left = self.board_to_screen(tl.0, i);
+            let right = self.board_to_screen((br.0 + 1).min(self.width), i);
 
-            draw_line(left_x.round(), y.round(), right_x.round(), y.round(), 0.5, GRAY);
+            draw_line(left.0, left.1, right.0, right.1, grid_weight, GRAY);
         }
+        
     }
 
     /// updates the state of the world
     pub fn update(&mut self) {
-        // sets the current board state into the board image
-        for (y, row) in self.board.iter().enumerate() {
-            for (x, cell) in row.iter().enumerate() {
-                self.board_image.set_pixel(x as u32, y as u32, cell.get_cell_color());
-            }
+
+        // loops through all of the updated pixels and uploads the changes to the image
+        let mut changed = false;
+        for pos in &self.updates {
+            self.board_image.set_pixel(pos.0 as u32, pos.1 as u32, self.board[pos.1][pos.0].get_cell_color());
+            changed = true;
         }
-        // uploads the new board state to the texture
-        self.board_texture.update(&self.board_image);
+        // uploads the new board state to the texture only if the image changed
+        if changed {
+            self.board_texture.update(&self.board_image);
+        }
 
         self.handle_input();
 
@@ -268,10 +286,10 @@ impl Wireworld {
 #[macroquad::main(window_conf)]
 async fn main() {
 
-    let mut world = Wireworld::new(200, 200);
+    let mut world = Wireworld::new(500, 500);
 
     loop {
-        clear_background(BLACK);
+        clear_background(Color::new(0.05, 0.05, 0.05, 1.0));
 
         world.update();
         draw_text(format!("FPS: {}", get_fps()).as_str(), 10.0, 50.0, 50.0, WHITE);
