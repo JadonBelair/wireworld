@@ -1,9 +1,6 @@
-use macroquad::prelude::*;
+use std::{time::Instant, collections::HashSet};
 
-/// board width
-const BOARD_WIDTH: usize = 200;
-/// board height
-const BOARD_HEIGHT: usize = 200;
+use macroquad::prelude::*;
 
 /// FPS for the simulation
 const FPS: f32 = 2.0;
@@ -30,198 +27,255 @@ enum Cell {
     Conductor,
 }
 
-#[macroquad::main(window_conf)]
-async fn main() {
-    let mut board: [[Cell; BOARD_WIDTH]; BOARD_HEIGHT] = [[Cell::Empty; BOARD_WIDTH]; BOARD_HEIGHT];
-
-    let mut board_image = Image::gen_image_color(BOARD_WIDTH as u16, BOARD_HEIGHT as u16, BLACK);
-    let board_texture = Texture2D::from_image(&board_image);
-    board_texture.set_filter(FilterMode::Nearest);
-
-    // width and height of the screen
-    let mut width = screen_width();
-    let mut height = screen_height();
-
-    // scales the screen to the smaller dimension
-    let mut scale = if width < height {
-        width / BOARD_WIDTH as f32
-    } else {
-        height / BOARD_HEIGHT as f32
-    };
-
-    let mut offset_x = 0.0;
-    let mut offset_y = 0.0;
-    
-    // keeps track of time passed since last simulation
-    let mut elapsed = 0.0;
-
-    let mut paused = false;
-
-    loop {
-        clear_background(BLACK);
-        
-        width = screen_width();
-        height = screen_height();
-
-        // sets the current board state into the board image
-        for (y, row) in board.iter().enumerate() {
-            for (x, cell) in row.iter().enumerate() {
-                board_image.set_pixel(x as u32, y as u32, get_cell_color(cell));
-            }
+impl Cell {
+    /// returns the color of the cell
+    pub fn get_cell_color(&self) -> Color {
+        match self {
+            Cell::Empty => BLACK,
+            Cell::Head => BLUE,
+            Cell::Tail => RED,
+            Cell::Conductor => YELLOW,
         }
-        // uploads the new board state to the texture
-        board_texture.update(&board_image);
+    }
+}
 
-        // update mouse position
-        let (m_x, m_y) = mouse_position();
+struct Wireworld {
+    board: Vec<Vec<Cell>>,
+    width: usize,
+    height: usize,
+    updates: HashSet<(usize, usize)>,
 
-        // handle user input and check to make sure the 
-        // mouse isnt on the edge, which can cause issues
-        if (m_x >= 0.0 && m_y >= 0.0) && (m_x < width && m_y < height) {
-            let (board_x, board_y) = screen_to_board(m_x, m_y, scale, offset_x, offset_y);
-            if board_x < BOARD_WIDTH && board_y < BOARD_HEIGHT {
-                if is_mouse_button_down(MouseButton::Left) {
-                    board[board_y][board_x] = Cell::Conductor;
-                } else if is_mouse_button_down(MouseButton::Right) {
-                    board[board_y][board_x] = Cell::Empty;
-                } else if is_mouse_button_down(MouseButton::Middle) {
-                    board[board_y][board_x] = Cell::Head;
+    x_offset: f32,
+    y_offset: f32,
+    scale: f32,
+
+    paused: bool,
+
+    board_image: Image,
+    board_texture: Texture2D,
+
+    elapsed: Instant,
+
+}
+
+impl Wireworld {
+    pub fn new(width: usize, height: usize) -> Self {
+        let board_image = Image::gen_image_color(width as u16, height as u16, BLACK);
+        let board_texture = Texture2D::from_image(&board_image);
+        board_texture.set_filter(FilterMode::Nearest);
+
+        Self {
+            board: vec![vec![Cell::Empty; width]; height],
+            width,
+            height,
+            updates: HashSet::new(),
+            x_offset: 0.0,
+            y_offset: 0.0,
+            scale: screen_width() / 30.0,
+            paused: false,
+            board_image,
+            board_texture,
+            elapsed: Instant::now(),
+        }
+    }
+
+    /// calculates the next generation of the world
+    fn next_generation(&mut self) {
+        let mut next_board = self.board.clone();
+        let mut next_updates = HashSet::new();
+
+        for pos in &self.updates {
+            let cell_next = self.next_state(pos.0, pos.1);
+            if cell_next != next_board[pos.1][pos.0] {
+                next_board[pos.1][pos.0] = cell_next;
+                next_updates.insert(*pos);
+                for x in ((pos.0 as isize - 1).max(0) as usize)..=(pos.0 + 1).min(self.width - 1) {
+                    for y in ((pos.1 as isize - 1).max(0) as usize)..=(pos.1 + 1).min(self.height - 1) {
+                        next_updates.insert((x, y));
+                    }
                 }
             }
         }
 
-        // handles pan and zoom operations
+        self.board = next_board;
+        self.updates = next_updates;
+    }
 
+    /// returns the next state of a cell in any given position
+    fn next_state(&self, x: usize, y: usize) -> Cell {
+        let cell = self.board[y][x];
+
+        match cell {
+            Cell::Empty => Cell::Empty,
+            Cell::Head => Cell::Tail,
+            Cell::Tail => Cell::Conductor,
+            Cell::Conductor => {
+
+                let mut neighbour_head = 0;
+
+                // loops through the 8 surrounding cells to see how many are head cells.
+                // has checks in place for edge cells to avoid leaving the bounds.
+                for c_y in (if y == 0 {0} else {y - 1})..=(if y > self.height - 2 {self.height - 1} else {y + 1}) {
+                    for c_x in (if x == 0 {0} else {x - 1})..=(if x > self.width - 2 {self.width - 1} else {x + 1}) {
+                        if self.board[c_y][c_x] == Cell::Head {
+                            neighbour_head += 1;
+                        }
+                    }
+                }
+
+                // will only become a head cell if there
+                // are 1 or 2 surrounding head cells
+                if neighbour_head == 1 || neighbour_head == 2 {
+                    Cell::Head
+                } else {
+                    Cell::Conductor
+                }
+            }
+        }
+    }
+
+    /// handles the input for panning and zooming
+    fn handle_pan_and_zoom(&mut self) {
         if is_key_down(KeyCode::A) {
-            offset_x -= 10.0 / scale;
+            self.x_offset -= 10.0 / self.scale;
         } else if is_key_down(KeyCode::D) {
-            offset_x += 10.0 / scale;
+            self.x_offset += 10.0 / self.scale;
         }
         if is_key_down(KeyCode::W) {
-            offset_y -= 10.0 / scale;
+            self.y_offset -= 10.0 / self.scale;
         } else if is_key_down(KeyCode::S) {
-            offset_y += 10.0 / scale;
-        }
-        
-        if is_key_down(KeyCode::Q) {
-            scale *= 0.99;
-        } else if is_key_down(KeyCode::E) {
-            scale *= 1.01;
+            self.y_offset += 10.0 / self.scale;
         }
 
+        if is_key_down(KeyCode::Q) {
+            self.scale *= 0.99;
+        } else if is_key_down(KeyCode::E) {
+            self.scale *= 1.01;
+        }
+    }
+
+    /// handles any input from the mouse
+    fn handle_mouse_input(&mut self) {
+        let (m_x, m_y) = mouse_position();
+
+        if is_mouse_button_down(MouseButton::Left) {
+            let (board_x, board_y) = self.screen_to_board(m_x, m_y);
+            if board_x >= 0 && board_x < self.width as isize && board_y >= 0 && board_y < self.height as isize {
+                self.board[board_y as usize][board_x as usize] = Cell::Conductor;
+                self.updates.insert((board_x as usize, board_y as usize));
+                for x in ((board_x - 1).max(0) as usize)..=((board_x + 1) as usize).min(self.width - 1) {
+                    for y in ((board_y - 1).max(0) as usize)..=((board_y + 1) as usize).min(self.height - 1) {
+                        self.updates.insert((x, y));
+                    }
+                }
+            }
+        } else if is_mouse_button_down(MouseButton::Right) {
+            let (board_x, board_y) = self.screen_to_board(m_x, m_y);
+            if board_x >= 0 && board_x < self.width as isize && board_y >= 0 && board_y < self.height as isize {
+                self.board[board_y as usize][board_x as usize] = Cell::Empty;
+                self.updates.insert((board_x as usize, board_y as usize));
+                for x in ((board_x - 1).max(0) as usize)..=((board_x + 1) as usize).min(self.width - 1) {
+                    for y in ((board_y - 1).max(0) as usize)..=((board_y + 1) as usize).min(self.height - 1) {
+                        self.updates.insert((x, y));
+                    }
+                }
+            }
+        } else if is_mouse_button_down(MouseButton::Middle) {
+            let (board_x, board_y) = self.screen_to_board(m_x, m_y);
+            if board_x >= 0 && board_x < self.width as isize && board_y >= 0 && board_y < self.height as isize {
+                self.board[board_y as usize][board_x as usize] = Cell::Head;
+                self.updates.insert((board_x as usize, board_y as usize));
+                for x in ((board_x - 1).max(0) as usize)..=((board_x + 1) as usize).min(self.width - 1) {
+                    for y in ((board_y - 1).max(0) as usize)..=((board_y + 1) as usize).min(self.height - 1) {
+                        self.updates.insert((x, y));
+                    }
+                }
+            }
+        }
+    }
+
+    /// handles all forms of input the user can give
+    fn handle_input(&mut self) {
+        self.handle_mouse_input();
+        self.handle_pan_and_zoom();
 
         if is_key_pressed(KeyCode::Space) {
-            paused = !paused;
+            self.paused = !self.paused;
         }
-        
-        // only updates the board the request amount per second
-        if elapsed >= FPS_TIME && !paused {
-            board = next_generation(&board);
-            elapsed = 0.0;
-        }
+    }
 
+    /// takes an x and y in screen space
+    /// and converts it to board space
+    fn screen_to_board(&self, x: f32, y: f32) -> (isize, isize) {
+        let scaled_x = x / self.scale + self.x_offset;
+        let scaled_y = y / self.scale + self.y_offset;
+
+        (scaled_x as isize, scaled_y as isize)
+    }
+
+    /// draws the board and and grid
+    fn draw_board(&mut self) {
         draw_texture_ex(
-            board_texture,
-            -offset_x * scale,
-            -offset_y * scale,
+            self.board_texture,
+            -self.x_offset * self.scale,
+            -self.y_offset * self.scale,
             WHITE,
             DrawTextureParams {
-                dest_size: Some(vec2(BOARD_WIDTH as f32 * scale, BOARD_HEIGHT as f32 * scale)),
+                dest_size: Some(vec2(self.width as f32 * self.scale, self.height as f32 * self.scale)),
                 ..Default::default()
-            }
+            },
         );
 
-        // i think the grid algorithm is better now.
-        // is still subject to future change
-
-        for i in (offset_x.clamp(0.0, BOARD_WIDTH as f32) as usize)..=(((width - offset_x) * scale) as usize).min(BOARD_WIDTH) {
-            let x = (i as f32 - offset_x) * scale;
-            let top_y = (-offset_y * scale).max(0.0);
-            let bottom_y = ((BOARD_HEIGHT as f32 - offset_y) * scale).min(height);
+        for i in (self.x_offset.clamp(0.0, self.width as f32) as usize)..=(((screen_width() - self.x_offset) * self.scale) as usize).min(self.width) {
+            let x = (i as f32 - self.x_offset) * self.scale;
+            let top_y = (-self.y_offset * self.scale).max(0.0);
+            let bottom_y = ((self.height as f32 - self.y_offset) * self.scale).min(screen_height());
             
             draw_line(x, top_y, x, bottom_y, 0.5, GRAY);
         }
         
-        for i in (offset_y.clamp(0.0, BOARD_HEIGHT as f32) as usize)..=(((height - offset_y) * scale) as usize).min(BOARD_HEIGHT) {
-            let y = (i as f32 - offset_y) * scale;
-            let left_x = (-offset_x * scale).max(0.0);
-            let right_x = ((BOARD_WIDTH as f32 - offset_x) * scale).min(width);
+        for i in (self.y_offset.clamp(0.0, self.height as f32) as usize)..=(((screen_height() - self.y_offset) * self.scale) as usize).min(self.height) {
+            let y = (i as f32 - self.y_offset) * self.scale;
+            let left_x = (-self.x_offset * self.scale).max(0.0);
+            let right_x = ((self.width as f32 - self.x_offset) * self.scale).min(screen_width());
 
             draw_line(left_x.round(), y.round(), right_x.round(), y.round(), 0.5, GRAY);
         }
+    }
 
-        elapsed += get_frame_time();
+    /// updates the state of the world
+    pub fn update(&mut self) {
+        // sets the current board state into the board image
+        for (y, row) in self.board.iter().enumerate() {
+            for (x, cell) in row.iter().enumerate() {
+                self.board_image.set_pixel(x as u32, y as u32, cell.get_cell_color());
+            }
+        }
+        // uploads the new board state to the texture
+        self.board_texture.update(&self.board_image);
+
+        self.handle_input();
+
+        if self.elapsed.elapsed().as_secs_f32() >= FPS_TIME && !self.paused {
+            self.next_generation();
+            self.elapsed = Instant::now();
+        }
+
+        self.draw_board();
+    }
+}
+
+#[macroquad::main(window_conf)]
+async fn main() {
+
+    let mut world = Wireworld::new(200, 200);
+
+    loop {
+        clear_background(BLACK);
+
+        world.update();
+        draw_text(format!("FPS: {}", get_fps()).as_str(), 10.0, 50.0, 50.0, WHITE);
 
         next_frame().await
-    }
-}
-
-/// takes a cell and returns the color
-/// that visually represents it
-fn get_cell_color(cell: &Cell) -> Color {
-    match cell {
-        Cell::Empty => BLACK,
-        Cell::Head => BLUE,
-        Cell::Tail => RED,
-        Cell::Conductor => YELLOW,
-    }
-}
-
-/// takes an x and y in screen space
-/// and converts it to board space
-fn screen_to_board(x: f32, y: f32, scale: f32, x_off: f32, y_off: f32) -> (usize, usize) {
-    let scaled_x = x / scale + x_off;
-    let scaled_y = y / scale + y_off;
-
-    if scaled_x < 0.0 || scaled_y < 0.0 {
-        return (BOARD_WIDTH, BOARD_HEIGHT);
-    }
-
-    (scaled_x as usize, scaled_y as usize)
-}
-
-/// returns the next generation of any given board state
-fn next_generation(board: &[[Cell; BOARD_WIDTH]; BOARD_HEIGHT]) -> [[Cell; BOARD_WIDTH]; BOARD_HEIGHT] {
-    let mut next_board = [[Cell::Empty; BOARD_WIDTH]; BOARD_HEIGHT];
-
-    for y in 0..board.len() {
-        for x in 0..board[0].len() {
-            next_board[y][x] = next_state(board, x, y);
-        }
-    }
-
-    next_board
-}
-
-/// returns the next state of a cell in any given position
-fn next_state(board: &[[Cell; BOARD_WIDTH]; BOARD_HEIGHT], x: usize, y: usize) -> Cell {
-    let cell = board[y][x];
-
-    match cell {
-        Cell::Empty => Cell::Empty,
-        Cell::Head => Cell::Tail,
-        Cell::Tail => Cell::Conductor,
-        Cell::Conductor => {
-
-            let mut neighbour_head = 0;
-
-            // loops through the 8 surrounding cells to see how many are head cells.
-            // has checks in place for edge cells to avoid leaving the bounds.
-            for c_y in (if y == 0 {0} else {y - 1})..=(if y > BOARD_HEIGHT - 2 {BOARD_HEIGHT - 1} else {y + 1}) {
-                for c_x in (if x == 0 {0} else {x - 1})..=(if x > BOARD_WIDTH - 2 {BOARD_WIDTH - 1} else {x + 1}) {
-                    if board[c_y][c_x] == Cell::Head {
-                        neighbour_head += 1;
-                    }
-                }
-            }
-
-            // will only become a head cell if there
-            // are 1 or 2 surrounding head cells
-            if neighbour_head == 1 || neighbour_head == 2 {
-                Cell::Head
-            } else {
-                Cell::Conductor
-            }
-        }
     }
 }
