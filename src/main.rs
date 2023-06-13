@@ -147,11 +147,22 @@ impl Wireworld {
             self.y_offset += 10.0 / self.scale;
         }
 
+        let (before_x, before_y) = self.screen_to_board(screen_width() / 2.0, screen_height() / 2.0);
+        // let before_x = (screen_width() / 2.0) / self.scale + self.x_offset;
+        // let before_y = (screen_height() / 2.0) / self.scale + self.y_offset;
+
         if is_key_down(KeyCode::Q) {
             self.scale *= 0.99;
         } else if is_key_down(KeyCode::E) {
             self.scale *= 1.01;
         }
+
+        let (after_x, after_y) = self.screen_to_board(screen_width() / 2.0, screen_height() / 2.0);
+        // let after_x = (screen_width() / 2.0) / self.scale + self.x_offset;
+        // let after_y = (screen_height() / 2.0) / self.scale + self.y_offset;
+
+        self.x_offset += before_x - after_x;
+        self.y_offset += before_y - after_y;
     }
 
     /// handles any input from the mouse
@@ -159,17 +170,17 @@ impl Wireworld {
         let (m_x, m_y) = mouse_position();
 
         if is_mouse_button_down(MouseButton::Left) {
-            let (board_x, board_y) = self.screen_to_board(m_x, m_y);
+            let (board_x, board_y) = self.screen_to_board_rounded(m_x, m_y);
             if board_x >= 0 && board_x < self.width as isize && board_y >= 0 && board_y < self.height as isize {
                 self.insert_cell(Cell::Conductor, board_x as usize, board_y as usize);
             }
         } else if is_mouse_button_down(MouseButton::Right) {
-            let (board_x, board_y) = self.screen_to_board(m_x, m_y);
+            let (board_x, board_y) = self.screen_to_board_rounded(m_x, m_y);
             if board_x >= 0 && board_x < self.width as isize && board_y >= 0 && board_y < self.height as isize {
                 self.insert_cell(Cell::Empty, board_x as usize, board_y as usize);
             }
         } else if is_mouse_button_down(MouseButton::Middle) {
-            let (board_x, board_y) = self.screen_to_board(m_x, m_y);
+            let (board_x, board_y) = self.screen_to_board_rounded(m_x, m_y);
             if board_x >= 0 && board_x < self.width as isize && board_y >= 0 && board_y < self.height as isize {
                 self.insert_cell(Cell::Head, board_x as usize, board_y as usize);
             }
@@ -198,11 +209,18 @@ impl Wireworld {
 
     /// takes an x and y in screen space
     /// and converts it to board space
-    fn screen_to_board(&self, x: f32, y: f32) -> (isize, isize) {
-        let scaled_x = x / self.scale + self.x_offset;
-        let scaled_y = y / self.scale + self.y_offset;
+    fn screen_to_board(&self, x: f32, y: f32) -> (f32, f32) {
+        let board_x = x / self.scale + self.x_offset;
+        let board_y = y / self.scale + self.y_offset;
 
-        (scaled_x as isize, scaled_y as isize)
+        (board_x, board_y)
+    }
+
+    /// helper function to make converting to integer board space easier
+    fn screen_to_board_rounded(&self, x: f32, y: f32) -> (isize, isize) {
+        let (board_x, board_y) = self.screen_to_board(x, y);
+
+        (board_x as isize, board_y as isize)
     }
 
     fn board_to_screen(&self, x: usize, y: usize) -> (f32, f32) {
@@ -230,12 +248,12 @@ impl Wireworld {
 
         // gets the top-left and bottom-right of the screen in board space
         let tl = {
-            let (x, y) = self.screen_to_board(0.0, 0.0);
+            let (x, y) = self.screen_to_board_rounded(0.0, 0.0);
             (x.clamp(0, self.width as isize) as usize, y.clamp(0, self.height as isize) as usize)
         };
 
         let br = {
-            let (x, y) = self.screen_to_board(screen_width() - 1.0, screen_height() - 1.0);
+            let (x, y) = self.screen_to_board_rounded(screen_width() - 1.0, screen_height() - 1.0);
             (x.clamp(0, self.width as isize) as usize, y.clamp(0, self.height as isize) as usize)
         };
 
