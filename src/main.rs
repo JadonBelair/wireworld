@@ -243,10 +243,8 @@ impl Wireworld {
             },
         );
 
-        // fades the grid out the farther you are zoomed out
-        let grid_weight = (self.scale - 10.0).clamp(0.0, 1.0);
-
         // gets the top-left and bottom-right of the screen in board space
+        // and clamps them to the board
         let tl = {
             let (x, y) = self.screen_to_board_rounded(0.0, 0.0);
             (x.clamp(0, self.width as isize) as usize, y.clamp(0, self.height as isize) as usize)
@@ -256,22 +254,24 @@ impl Wireworld {
             let (x, y) = self.screen_to_board_rounded(screen_width() - 1.0, screen_height() - 1.0);
             (x.clamp(0, self.width as isize) as usize, y.clamp(0, self.height as isize) as usize)
         };
-
-        // clips the x and y coords of the tl and br to only 
-        // draw the grid for the cells on screen
-
-        for i in tl.0..=br.0 {
-            let top = self.board_to_screen(i, tl.1);
-            let bottom = self.board_to_screen(i, (br.1 + 1).min(self.height));
-            
-            draw_line(top.0, top.1, bottom.0, bottom.1, grid_weight, GRAY);
-        }
         
-        for i in tl.1..=br.1 {
-            let left = self.board_to_screen(tl.0, i);
-            let right = self.board_to_screen((br.0 + 1).min(self.width), i);
+        // fades the grid out the farther you are zoomed out
+        let grid_weight = (self.scale - 10.0).clamp(0.0, 1.0);
 
-            draw_line(left.0, left.1, right.0, right.1, grid_weight, GRAY);
+        if grid_weight > 0.0 {
+            for i in tl.0..=br.0 {
+                let top = self.board_to_screen(i, tl.1);
+                let bottom = self.board_to_screen(i, (br.1 + 1).min(self.height));
+                
+                draw_line(top.0, top.1, bottom.0, bottom.1, grid_weight, GRAY);
+            }
+            
+            for i in tl.1..=br.1 {
+                let left = self.board_to_screen(tl.0, i);
+                let right = self.board_to_screen((br.0 + 1).min(self.width), i);
+
+                draw_line(left.0, left.1, right.0, right.1, grid_weight, GRAY);
+            }
         }
         
     }
